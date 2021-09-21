@@ -1,41 +1,85 @@
+from __future__ import unicode_literals, print_function
+import plac
+import random
+from pathlib import Path
 import spacy
+from tqdm import tqdm
+from spacy.training import Example
+
+TRAIN_DATA = [
+              ("Walmart is a leading e-commerce company", {"entities": [(0, 7, "ORG")]}),
+              ("I reached Chennai yesterday.", {"entities": [(19, 28, "GPE")]}),
+              ("I recently ordered a book from Amazon", {"entities": [(24,32, "ORG")]}),
+              ("I was driving a BMW", {"entities": [(16,19, "PRODUCT")]}),
+              ("I ordered this from ShopClues", {"entities": [(20,29, "ORG")]}),
+              ("Fridge can be ordered in Amazon ", {"entities": [(0,6, "PRODUCT")]}),
+              ("I bought a new Washer", {"entities": [(16,22, "PRODUCT")]}),
+              ("I bought a old table", {"entities": [(16,21, "PRODUCT")]}),
+              ("I bought a fancy dress", {"entities": [(18,23, "PRODUCT")]}),
+              ("I rented a camera", {"entities": [(12,18, "PRODUCT")]}),
+              ("I rented a tent for our trip", {"entities": [(12,16, "PRODUCT")]}),
+              ("I rented a screwdriver from our neighbour", {"entities": [(12,22, "PRODUCT")]}),
+              ("I repaired my computer", {"entities": [(15,23, "PRODUCT")]}),
+              ("I got my clock fixed", {"entities": [(16,21, "PRODUCT")]}),
+              ("I got my truck fixed", {"entities": [(16,21, "PRODUCT")]}),
+              ("Flipkart started it's journey from zero", {"entities": [(0,8, "ORG")]}),
+              ("I recently ordered from Max", {"entities": [(24,27, "ORG")]}),
+              ("Flipkart is recognized as leader in market",{"entities": [(0,8, "ORG")]}),
+              ("I recently ordered from Swiggy", {"entities": [(24,29, "ORG")]})
+              ]
+
+model = None
+output_dir=Path("C:\\Users\\chiha\\Documents\\ner")
+n_iter=100
+
+if model is not None:
+    nlp = spacy.load(model)  
+    print("Loaded model '%s'" % model)
+else:
+    nlp = spacy.blank('en')  
+    print("Created blank 'en' model")
+
+#set up the pipeline
+
+if 'ner' not in nlp.pipe_names:
+    ner = nlp.create_pipe('ner')
+    nlp.add_pipe("ner", last=True)
+else:
+    ner = nlp.get_pipe('ner')
+
+
+    for _, annotations in TRAIN_DATA:
+         for ent in annotations.get('entities'):
+            ner.add_label(ent[2])
+
+other_pipes = [pipe for pipe in nlp.pipe_names if pipe != 'ner']
+with nlp.disable_pipes(*other_pipes):  # only train NER
+    optimizer = nlp.begin_training()
+    for itn in range(n_iter):
+        random.shuffle(TRAIN_DATA)
+        losses = {}
+        for text, annotations in tqdm(TRAIN_DATA):
+            example = Example.from_dict(nlp.make_doc(text), annotations)
+            nlp.update([example])
+        print(losses)
+
+for text, _ in TRAIN_DATA:
+    doc = nlp(text)
+    print('Entities', [(ent.text, ent.label_) for ent in doc.ents])
+
+
+if output_dir is not None:
+    output_dir = Path(output_dir)
+    if not output_dir.exists():
+        output_dir.mkdir()
+    nlp.to_disk(output_dir)
+    print("Saved model to", output_dir)
+
 from spacy import displacy
-from collections import Counter
-import en_core_web_sm
-from bs4 import BeautifulSoup
-import requests
-import re
-nlp = en_core_web_sm.load()
 
-doc = nlp('European authorities fined Google a record $5.1 billion on Wednesday for abusing its power in the mobile phone market and ordered the company to alter its practices')
-pprint([(X.text, X.label_) for X in doc.ents])
+doc = nlp("Pokosman is a leading e-commerce company")
+for ent in doc.ents:
+    print(ent.text, ent.start_char, ent.end_char, ent.label_)
+displacy.render(nlp(doc.text),style='ent',jupyter = True)
 
-pprint([(X, X.ent_iob_, X.ent_type_) for X in doc])
 
-def url_to_string(url):
-    res = requests.get(url)
-    html = res.text
-    soup = BeautifulSoup(html, 'html5lib')
-    for script in soup(["script", "style", 'aside']):
-        script.extract()
-    return " ".join(re.split(r'[\n\t]+', soup.get_text()))
-ny_bb = url_to_string('https://www.nytimes.com/2018/08/13/us/politics/peter-strzok-fired-fbi.html?hp&action=click&pgtype=Homepage&clickSource=story-heading&module=first-column-region&region=top-news&WT.nav=top-news')
-article = nlp(ny_bb)
-len(article.ents)
-labels = [x.label_ for x in article.ents]
-Counter(labels)
-items = [x.text for x in article.ents]
-Counter(items).most_common(3)
-sentences = [x for x in article.sents]
-print(sentences[20])
-displacy.render(nlp(str(sentences[20])), jupyter=True, style='ent')
-
-displacy.render(nlp(str(sentences[20])), style='dep', jupyter = True, options = {'distance': 120})
-
-[(x.orth_,x.pos_, x.lemma_) for x in [y 
-                                      for y
-                                      in nlp(str(sentences[20])) 
-                                      if not y.is_stop and y.pos_ != 'PUNCT']]
-
-dict([(str(x), x.label_) for x in nlp(str(sentences[20])).ents])
-print([(x, x.ent_iob_, x.ent_type_) for x in sentences[20]])
